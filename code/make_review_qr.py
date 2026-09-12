@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Make the review QR code.
 
-Reads the Google review URL out of website/lib/review.config.ts (so there is
-still only ONE place you ever paste it), and writes two files:
+⛔ This QR points at the site's OWN /review page, NOT the raw Google review
+link. /review is the star-rating gate: 4-5 stars go on to Google, 1-3 stars
+get routed to the owner instead. A QR that encoded the Google link directly
+would let every scan skip the gate and land straight on a public review
+form - exactly the failure this whole skill exists to prevent.
+
+Reads the site's base URL out of website/lib/site.config.ts (`url:`) and
+appends /review, so there is still only ONE place you ever paste the domain.
+Writes two files:
 
     website/public/review-qr.png   - for print: invoices, counter cards, trucks
     website/public/review-qr.svg   - vector, scales to any size without blurring
@@ -11,7 +18,7 @@ Run it:
     Code/.venv/bin/python Code/make_review_qr.py
 
 Or point it at any URL directly, without touching the config:
-    Code/.venv/bin/python Code/make_review_qr.py https://g.page/r/XXXX/review
+    Code/.venv/bin/python Code/make_review_qr.py https://www.example.com/review
 
 Error correction is set to H (30% recoverable). That is deliberate - a QR on a
 truck door or a greasy invoice gets scratched, wet and partly covered, and H is
@@ -32,7 +39,7 @@ except ImportError:
     )
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = ROOT / "website" / "lib" / "review.config.ts"
+CONFIG = ROOT / "website" / "lib" / "site.config.ts"
 OUT_DIR = ROOT / "website" / "public"
 
 # Accent from design/design-system.md (--accent). A coloured QR still scans as
@@ -43,13 +50,13 @@ LIGHT = "#ffffff"  # white, not parchment: print needs maximum contrast
 
 
 def url_from_config() -> str | None:
-    """Pull googleReviewUrl out of the TS config without needing a JS parser."""
+    """Build https://<site-url>/review from site.config.ts's `url:` field."""
     if not CONFIG.exists():
         return None
-    match = re.search(
-        r"googleReviewUrl:\s*[\"']([^\"']+)[\"']", CONFIG.read_text(encoding="utf-8")
-    )
-    return match.group(1) if match else None
+    match = re.search(r"\burl:\s*[\"']([^\"']+)[\"']", CONFIG.read_text(encoding="utf-8"))
+    if not match:
+        return None
+    return match.group(1).rstrip("/") + "/review"
 
 
 def main() -> int:
@@ -57,11 +64,10 @@ def main() -> int:
 
     if not url:
         print(
-            "No review URL found.\n\n"
+            "No site URL found.\n\n"
             "Fix it one of two ways:\n"
-            f"  1. Paste your g.page review link into {CONFIG.relative_to(ROOT)}\n"
-            "     (replace `null` with the URL in quotes), then re-run this.\n"
-            "  2. Or pass it straight in:  make_review_qr.py https://g.page/r/.../review"
+            f"  1. Check the `url:` field is set in {CONFIG.relative_to(ROOT)}, then re-run this.\n"
+            "  2. Or pass the /review URL straight in:  make_review_qr.py https://www.example.com/review"
         )
         return 1
 
