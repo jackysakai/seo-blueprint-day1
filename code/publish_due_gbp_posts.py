@@ -34,7 +34,7 @@ def sent_dates():
     dates = []
     for f in SENT.glob("*.yml"):
         try:
-            stamp = yaml.safe_load(f.read_text()).get("sent_at")
+            stamp = yaml.safe_load(f.read_text(encoding="utf-8")).get("sent_at")
             if stamp:
                 dates.append(datetime.date.fromisoformat(str(stamp)[:10]))
         except Exception:
@@ -61,7 +61,7 @@ def main():
 
     due = []
     for f in sorted(QUEUE.glob("*.yml")):
-        post = yaml.safe_load(f.read_text())
+        post = yaml.safe_load(f.read_text(encoding="utf-8"))
         stamp = post.get("send_after")
         if stamp and datetime.date.fromisoformat(str(stamp)[:10]) <= today:
             due.append((f, post))
@@ -117,7 +117,9 @@ def main():
     if status == 200:
         post["sent_at"] = today.isoformat()
         post["webhook_response"] = body[:300]   # the receipt, kept for audit
-        (SENT / f.name).write_text(yaml.safe_dump(post, sort_keys=False, allow_unicode=True))
+        (SENT / f.name).write_text(
+            yaml.safe_dump(post, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
         f.unlink()
         print(f"Sent {f.name}\n  Make responded: {body[:200]}")
     else:

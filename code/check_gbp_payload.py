@@ -36,7 +36,7 @@ LEGAL_CTA = {"BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL", "GET_OFFE
 def check(path):
     errs = []
     try:
-        d = yaml.safe_load(path.read_text())
+        d = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception as e:
         return [f"unparseable YAML: {e}"]
     if not isinstance(d, dict):
@@ -75,23 +75,33 @@ def check(path):
             errs.append(f'{field} is {len(v)} characters - Google caps it at {cap}. '
                         f'Shorten it: "{v[:cap - 3]}..."')
 
-    media = str(d.get("media_items", ""))
-    if media:
+    # media_items is a LIST of https URLs. The Make module needs "Array of
+    # objects" for this parameter (confirmed by hand 11 Sep 2026 - a bare string
+    # or a single URL fails with "Array of objects expected in parameter
+    # 'media'"), and its Source URL field reads {{1.media_items[1]}}, which
+    # requires media_items to actually be a JSON array in the webhook payload.
+    raw_media = d.get("media_items")
+    media_list = raw_media if isinstance(raw_media, list) else ([raw_media] if raw_media else [])
+    if raw_media is not None and not isinstance(raw_media, list):
+        errs.append('media_items must be a YAML list (e.g. "- https://...jpg"), '
+                    "even for one photo - the Make module reads it as media_items[1]")
+    for media in media_list:
+        media = str(media)
         if not media.startswith("https://"):
             errs.append("media_items must be a public https:// URL - Google fetches it "
                         "itself, so a local path fails silently")
+            continue
         # Google Business Profile accepts JPG and PNG only. A WebP is fetched fine,
         # then rejected by Google, and Make reports it as a generic "service problem
         # on its side" - which sends you looking at connections and quotas instead.
-        elif not media.lower().split("?")[0].endswith((".jpg", ".jpeg", ".png")):
+        if not media.lower().split("?")[0].endswith((".jpg", ".jpeg", ".png")):
             ext = media.lower().split("?")[0].rsplit(".", 1)[-1]
             errs.append(f"media_items is .{ext} - Google Business Profile accepts JPG "
                         f"and PNG only. WebP is the common trap: it loads in a browser, "
                         f"Google refuses it, and Make blames itself.")
-
-    # Size the image before Google has to. Its hard cap is 5 MB, but large files
-    # time out inside Make and surface as "hit a service problem on its side".
-    if media.startswith("https://"):
+            continue
+        # Size the image before Google has to. Its hard cap is 5 MB, but large files
+        # time out inside Make and surface as "hit a service problem on its side".
         try:
             import urllib.request
             with urllib.request.urlopen(media, timeout=20) as r:
